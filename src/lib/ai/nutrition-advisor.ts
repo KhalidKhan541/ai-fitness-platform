@@ -515,7 +515,7 @@ Return as a HydrationPlan JSON object.`;
       const cleaned = this.extractJSON(response.content);
       return MealPlanSchema.parse(JSON.parse(cleaned));
     } catch {
-      throw new Error(`Failed to parse meal plan: ${response.content.slice0(200)}`);
+      throw new Error(`Failed to parse meal plan: ${response.content.slice(0, 200)}`);
     }
   }
 
