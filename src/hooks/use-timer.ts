@@ -1,214 +1,214 @@
-import * as React from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+
+type TimerMode = "stopwatch" | "countdown" | "rest";
 
 interface UseTimerOptions {
-  initialTime?: number;
-  interval?: number;
-  onTimeUpdate?: (time: number) => void;
-  onTimerComplete?: () => void;
+  initialSeconds?: number;
+  countdownTarget?: number;
+  mode?: TimerMode;
+  onComplete?: () => void;
+  onTick?: (seconds: number) => void;
+  autoStart?: boolean;
 }
 
 interface UseTimerResult {
-  time: number;
+  seconds: number;
   isRunning: boolean;
   isPaused: boolean;
-  start: () => void;
-  stop: () => void;
-  pause: () => void;
-  resume: () => void;
-  reset: () => void;
+  mode: TimerMode;
   formattedTime: string;
   progress: number;
+  start: () => void;
+  pause: () => void;
+  resume: () => void;
+  stop: () => void;
+  reset: () => void;
+  resetTo: (seconds: number) => void;
+  addTime: (seconds: number) => void;
+  subtractTime: (seconds: number) => void;
+  setMode: (mode: TimerMode) => void;
+  getLapTimes: () => number[];
+  lap: () => void;
 }
 
-function useTimer(options: UseTimerOptions = {}): UseTimerResult {
-  const { initialTime = 0, interval = 1000, onTimeUpdate, onTimerComplete } = options;
+export function useTimer(options: UseTimerOptions = {}): UseTimerResult {
+  const {
+    initialSeconds = 0,
+    countdownTarget,
+    mode: initialMode = "stopwatch",
+    onComplete,
+    onTick,
+    autoStart = false,
+  } = options;
 
-  const [time, setTime] = React.useState(initialTime);
-  const [isRunning, setIsRunning] = React.useState(false);
-  const [isPaused, setIsPaused] = React.useState(false);
-  const intervalRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [seconds, setSeconds] = useState(
+    initialMode === "countdown" && countdownTarget ? countdownTarget : initialSeconds
+  );
+  const [isRunning, setIsRunning] = useState(autoStart);
+  const [isPaused, setIsPaused] = useState(false);
+  const [mode, setMode] = useState<TimerMode>(initialMode);
+  const [laps, setLaps] = useState<number[]>([]);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const targetRef = useRef(
+    initialMode === "countdown" && countdownTarget ? countdownTarget : 0
+  );
 
-  const clearTimer = React.useCallback(() => {
+  const clearTimerInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
   }, []);
 
-  const start = React.useCallback(() => {
-    clearTimer();
-    setIsRunning(true);
-    setIsPaused(false);
-    intervalRef.current = setInterval(() => {
-      setTime((prev) => {
-        const newTime = prev + 1;
-        onTimeUpdate?.(newTime);
-        return newTime;
-      });
-    }, interval);
-  }, [clearTimer, interval, onTimeUpdate]);
+  useEffect(() => {
+    clearTimerInterval();
 
-  const stop = React.useCallback(() => {
-    clearTimer();
-    setIsRunning(false);
-    setIsPaused(false);
-  }, [clearTimer]);
-
-  const pause = React.useCallback(() => {
-    clearTimer();
-    setIsPaused(true);
-  }, [clearTimer]);
-
-  const resume = React.useCallback(() => {
-    if (isPaused && isRunning) {
-      setIsPaused(false);
+    if (isRunning && !isPaused) {
       intervalRef.current = setInterval(() => {
-        setTime((prev) => {
-          const newTime = prev + 1;
-          onTimeUpdate?.(newTime);
-          return newTime;
-        });
-      }, interval);
-    }
-  }, [isPaused, isRunning, interval, onTimeUpdate]);
+        setSeconds((prev) => {
+          let next: number;
 
-  const reset = React.useCallback(() => {
-    clearTimer();
-    setTime(initialTime);
-    setIsRunning(false);
-    setIsPaused(false);
-  }, [clearTimer, initialTime]);
-
-  React.useEffect(() => {
-    return () => clearTimer();
-  }, [clearTimer]);
-
-  const formattedTime = React.useMemo(() => {
-    const hours = Math.floor(time / 3600);
-    const minutes = Math.floor((time % 3600) / 60);
-    const seconds = time % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }, [time]);
-
-  const progress = React.useMemo(() => {
-    return time > 0 ? (time / initialTime) * 100 : 0;
-  }, [time, initialTime]);
-
-  return {
-    time,
-    isRunning,
-    isPaused,
-    start,
-    stop,
-    pause,
-    resume,
-    reset,
-    formattedTime,
-    progress,
-  };
-}
-
-function useCountdown(
-  initialTime: number,
-  onComplete?: () => void
-): UseTimerResult & { remaining: number; percentage: number } {
-  const [time, setTime] = React.useState(initialTime);
-  const [isRunning, setIsRunning] = React.useState(false);
-  const [isPaused, setIsPaused] = React.useState(false);
-  const intervalRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  const clearTimer = React.useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const start = React.useCallback(() => {
-    clearTimer();
-    setIsRunning(true);
-    setIsPaused(false);
-    intervalRef.current = setInterval(() => {
-      setTime((prev) => {
-        if (prev <= 1) {
-          clearTimer();
-          setIsRunning(false);
-          onComplete?.();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, [clearTimer, onComplete]);
-
-  const stop = React.useCallback(() => {
-    clearTimer();
-    setIsRunning(false);
-    setIsPaused(false);
-  }, [clearTimer]);
-
-  const pause = React.useCallback(() => {
-    clearTimer();
-    setIsPaused(true);
-  }, [clearTimer]);
-
-  const resume = React.useCallback(() => {
-    if (isPaused && isRunning) {
-      setIsPaused(false);
-      intervalRef.current = setInterval(() => {
-        setTime((prev) => {
-          if (prev <= 1) {
-            clearTimer();
-            setIsRunning(false);
-            onComplete?.();
-            return 0;
+          if (mode === "countdown") {
+            next = prev - 1;
+            if (next <= 0) {
+              clearTimerInterval();
+              setIsRunning(false);
+              onComplete?.();
+              return 0;
+            }
+          } else {
+            next = prev + 1;
           }
-          return prev - 1;
+
+          onTick?.(next);
+          return next;
         });
       }, 1000);
     }
-  }, [isPaused, isRunning, clearTimer, onComplete]);
 
-  const reset = React.useCallback(() => {
-    clearTimer();
-    setTime(initialTime);
+    return clearTimerInterval;
+  }, [isRunning, isPaused, mode, onComplete, onTick, clearTimerInterval]);
+
+  const start = useCallback(() => {
+    setIsRunning(true);
+    setIsPaused(false);
+  }, []);
+
+  const pause = useCallback(() => {
+    setIsPaused(true);
+  }, []);
+
+  const resume = useCallback(() => {
+    setIsPaused(false);
+  }, []);
+
+  const stop = useCallback(() => {
+    clearTimerInterval();
     setIsRunning(false);
     setIsPaused(false);
-  }, [clearTimer, initialTime]);
+  }, [clearTimerInterval]);
 
-  React.useEffect(() => {
-    return () => clearTimer();
-  }, [clearTimer]);
+  const reset = useCallback(() => {
+    clearTimerInterval();
+    setSeconds(
+      mode === "countdown" && targetRef.current > 0 ? targetRef.current : 0
+    );
+    setIsRunning(false);
+    setIsPaused(false);
+    setLaps([]);
+  }, [clearTimerInterval, mode]);
 
-  const formattedTime = React.useMemo(() => {
-    const hours = Math.floor(time / 3600);
-    const minutes = Math.floor((time % 3600) / 60);
-    const seconds = time % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }, [time]);
+  const resetTo = useCallback(
+    (newSeconds: number) => {
+      clearTimerInterval();
+      setSeconds(newSeconds);
+      targetRef.current = newSeconds;
+      setIsRunning(false);
+      setIsPaused(false);
+      setLaps([]);
+    },
+    [clearTimerInterval]
+  );
 
-  const percentage = React.useMemo(() => {
-    return initialTime > 0 ? ((initialTime - time) / initialTime) * 100 : 0;
-  }, [time, initialTime]);
+  const addTime = useCallback((additionalSeconds: number) => {
+    setSeconds((prev) => prev + additionalSeconds);
+    targetRef.current += additionalSeconds;
+  }, []);
+
+  const subtractTime = useCallback((subtractSeconds: number) => {
+    setSeconds((prev) => Math.max(0, prev - subtractSeconds));
+  }, []);
+
+  const setModeAndReset = useCallback(
+    (newMode: TimerMode) => {
+      clearTimerInterval();
+      setMode(newMode);
+      if (newMode === "countdown" && countdownTarget) {
+        setSeconds(countdownTarget);
+        targetRef.current = countdownTarget;
+      } else {
+        setSeconds(initialSeconds);
+        targetRef.current = 0;
+      }
+      setIsRunning(false);
+      setIsPaused(false);
+      setLaps([]);
+    },
+    [clearTimerInterval, countdownTarget, initialSeconds]
+  );
+
+  const lap = useCallback(() => {
+    setLaps((prev) => [...prev, seconds]);
+  }, [seconds]);
+
+  const getLapTimes = useCallback(() => {
+    return laps.map((lapTime, index) => {
+      const prevLap = index > 0 ? laps[index - 1] : 0;
+      return lapTime - prevLap;
+    });
+  }, [laps]);
+
+  const target =
+    mode === "countdown" && targetRef.current > 0 ? targetRef.current : 1;
+  const progress =
+    mode === "countdown"
+      ? target > 0
+        ? ((target - seconds) / target) * 100
+        : 0
+      : seconds > 0
+        ? Math.min(100, (seconds / 3600) * 100)
+        : 0;
+
+  const formattedTime = formatTimerTime(seconds);
 
   return {
-    time,
+    seconds,
     isRunning,
     isPaused,
+    mode,
+    formattedTime,
+    progress: Math.round(progress * 10) / 10,
     start,
-    stop,
     pause,
     resume,
+    stop,
     reset,
-    formattedTime,
-    progress: percentage,
-    remaining: time,
-    percentage,
+    resetTo,
+    addTime,
+    subtractTime,
+    setMode: setModeAndReset,
+    getLapTimes,
+    lap,
   };
 }
 
-function useStopwatch(interval = 1000): UseTimerResult {
-  return useTimer({ initialTime: 0, interval });
-}
+function formatTimerTime(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const secs = Math.floor(totalSeconds % 60);
 
-export { useTimer, useCountdown, useStopwatch };
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}

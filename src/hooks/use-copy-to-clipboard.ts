@@ -1,88 +1,55 @@
-import * as React from "react";
+import { useState, useCallback } from "react";
 
 interface UseCopyToClipboardResult {
   copiedText: string | null;
+  isCopied: boolean;
   copy: (text: string) => Promise<boolean>;
   reset: () => void;
 }
 
-function useCopyToClipboard(): UseCopyToClipboardResult {
-  const [copiedText, setCopiedText] = React.useState<string | null>(null);
+export function useCopyToClipboard(): UseCopyToClipboardResult {
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
 
-  const copy = React.useCallback(async (text: string): Promise<boolean> => {
-    if (!navigator?.clipboard) {
-      console.warn("Clipboard API not supported");
-      return false;
-    }
-
+  const copy = useCallback(async (text: string): Promise<boolean> => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopiedText(text);
-      return true;
-    } catch (error) {
-      console.error("Failed to copy:", error);
-      setCopiedText(null);
-      return false;
-    }
-  }, []);
-
-  const reset = React.useCallback(() => {
-    setCopiedText(null);
-  }, []);
-
-  return { copiedText, copy, reset };
-}
-
-function useCopyToClipboardWithTimeout(timeout: number = 2000): UseCopyToClipboardResult & { isCopied: boolean } {
-  const [copiedText, setCopiedText] = React.useState<string | null>(null);
-  const [isCopied, setIsCopied] = React.useState(false);
-  const timeoutRef = React.useRef<NodeJS.Timeout>();
-
-  const copy = React.useCallback(async (text: string): Promise<boolean> => {
-    if (!navigator?.clipboard) {
-      console.warn("Clipboard API not supported");
-      return false;
-    }
-
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedText(text);
-      setIsCopied(true);
-
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        setCopiedText(text);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+        return true;
       }
 
-      timeoutRef.current = setTimeout(() => {
-        setIsCopied(false);
-      }, timeout);
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      textArea.style.top = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
 
-      return true;
-    } catch (error) {
-      console.error("Failed to copy:", error);
-      setCopiedText(null);
-      setIsCopied(false);
+      const success = document.execCommand("copy");
+      document.body.removeChild(textArea);
+
+      if (success) {
+        setCopiedText(text);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+        return true;
+      }
+
+      return false;
+    } catch {
       return false;
     }
-  }, [timeout]);
+  }, []);
 
-  const reset = React.useCallback(() => {
+  const reset = useCallback(() => {
     setCopiedText(null);
     setIsCopied(false);
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
   }, []);
 
-  React.useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  return { copiedText, copy, reset, isCopied };
+  return { copiedText, isCopied, copy, reset };
 }
-
-export { useCopyToClipboard, useCopyToClipboardWithTimeout };
