@@ -1,65 +1,72 @@
 "use client";
 
-import * as React from "react";
-import { QueryClient, QueryClientProvider, HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { createContext, useContext } from "react";
+import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useState } from "react";
+
+interface QueryProviderContextType {
+  queryClient: QueryClient;
+}
+
+const QueryProviderContext = createContext<QueryProviderContextType | undefined>(
+  undefined
+);
 
 interface QueryProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
   client?: QueryClient;
 }
 
-function QueryProvider({ children, client }: QueryProviderProps) {
-  const [queryClient] = React.useState(
-    () =>
-      client ||
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 60 * 1000,
-            refetchOnWindowFocus: false,
-            retry: 1,
-          },
-        },
-      })
-  );
-
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-}
-
-interface QueryBoundaryProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
-  errorFallback?: React.ReactNode;
-}
-
-function QueryBoundary({ children, fallback, errorFallback }: QueryBoundaryProps) {
-  return <>{children}</>;
-}
-
-function useQueryInvalidation() {
-  const { useQueryClient } = require("@tanstack/react-query");
-  const queryClient = useQueryClient();
-
-  const invalidateQueries = React.useCallback(
-    (filters?: { queryKey?: string[]; queryType?: string }) => {
-      return queryClient.invalidateQueries(filters);
+function makeQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,
+        gcTime: 5 * 60 * 1000,
+        retry: 2,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: "always",
+        refetchOnMount: true,
+      },
+      mutations: {
+        retry: 1,
+      },
     },
-    [queryClient]
+  });
+}
+
+let browserQueryClient: QueryClient | undefined;
+
+function getQueryClient(): QueryClient {
+  if (typeof window === "undefined") {
+    return makeQueryClient();
+  }
+  if (!browserQueryClient) {
+    browserQueryClient = makeQueryClient();
+  }
+  return browserQueryClient;
+}
+
+export function QueryProvider({
+  children,
+  client: providedClient,
+}: QueryProviderProps) {
+  const [queryClient] = useState(() => providedClient || getQueryClient());
+
+  return (
+    <QueryProviderContext.Provider value={{ queryClient }}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </QueryProviderContext.Provider>
   );
-
-  const invalidateAll = React.useCallback(() => {
-    return queryClient.invalidateQueries();
-  }, [queryClient]);
-
-  return { invalidateQueries, invalidateAll, queryClient };
 }
 
-interface InfiniteQueryProviderProps {
-  children: React.ReactNode;
+export function useQueryProviderContext(): QueryProviderContextType {
+  const context = useContext(QueryProviderContext);
+  if (!context) {
+    throw new Error(
+      "useQueryProviderContext must be used within a QueryProvider"
+    );
+  }
+  return context;
 }
-
-function InfiniteQueryProvider({ children }: InfiniteQueryProviderProps) {
-  return <>{children}</>;
-}
-
-export { QueryProvider, QueryBoundary, useQueryInvalidation, InfiniteQueryProvider };
